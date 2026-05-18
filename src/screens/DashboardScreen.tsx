@@ -2,7 +2,7 @@ import React, {useCallback} from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, StatusBar, Alert} from 'react-native';
 import Animated, {FadeInUp, FadeInDown, Layout} from 'react-native-reanimated';
 import {LinearGradient} from 'expo-linear-gradient';
-import {Plus, Settings, Shield, Clock, Trash2, Flame, Target} from 'lucide-react-native';
+import {Plus, Settings, Shield, Clock, Trash2, Flame, Target, Zap} from 'lucide-react-native';
 import {StackNavigationProp} from '@react-navigation/stack';
 import {RootStackParamList} from '../navigation/AppNavigator';
 import {useScheduleStore, BlockSchedule} from '../store/useScheduleStore';
@@ -73,7 +73,7 @@ const ScheduleCard: React.FC<{schedule: BlockSchedule; onToggle: () => void; onD
 };
 
 const DashboardScreen: React.FC<Props> = ({navigation}) => {
-  const {schedules, stats, toggleSchedule, deleteSchedule, getNextBlockTime} = useScheduleStore();
+  const {schedules, stats, toggleSchedule, deleteSchedule, getNextBlockTime, incrementBlockedAttempts} = useScheduleStore();
 
   const activeCount = schedules.filter(s => s.isEnabled && isScheduleActive(s)).length;
   const totalAppsBlocked = [...new Set(schedules.flatMap(s => s.blockedApps.map(a => a.packageName)))].length;
@@ -84,6 +84,39 @@ const DashboardScreen: React.FC<Props> = ({navigation}) => {
     const app = schedule.blockedApps[0];
     navigation.navigate('BlockingPreview', {appName: app.appName, endTime: schedule.endTime});
   }, [navigation]);
+
+  const handleSimulateAppLaunch = useCallback((app: any, schedule: BlockSchedule) => {
+    const activeSchedule = schedules.find(s => 
+      s.isEnabled && 
+      isScheduleActive(s) && 
+      s.blockedApps.some(a => a.packageName === app.packageName)
+    );
+
+    if (activeSchedule) {
+      incrementBlockedAttempts();
+      navigation.navigate('BlockingPreview', {appName: app.appName, endTime: activeSchedule.endTime});
+    } else {
+      Alert.alert(
+        'App Opened: Allowed',
+        `"${app.appName}" opened successfully!\n\nIt is NOT blocked right now because its schedule ("${schedule.name}") is either disabled or currently outside its active time block (${formatTime(schedule.startTime)} - ${formatTime(schedule.endTime)}).`,
+        [
+          { text: 'Got it' },
+          { 
+            text: 'Force Enable Schedule', 
+            onPress: () => {
+              toggleSchedule(schedule.id);
+            }
+          }
+        ]
+      );
+    }
+  }, [schedules, toggleSchedule, incrementBlockedAttempts, navigation]);
+
+  const uniqueBlockedApps = schedules.flatMap(s => 
+    s.blockedApps.map(app => ({ ...app, schedule: s }))
+  ).filter((app, index, self) => 
+    self.findIndex(a => a.packageName === app.packageName) === index
+  );
 
   const renderEmpty = () => (
     <Animated.View entering={FadeInUp.delay(300).springify()} style={styles.emptyState}>
@@ -136,6 +169,41 @@ const DashboardScreen: React.FC<Props> = ({navigation}) => {
           <StatCard icon={<Target color={Colors.teal} size={22} />} value={`${totalAppsBlocked}`} label="Apps" gradient={['rgba(20,184,166,0.2)', 'rgba(20,184,166,0.05)']} delay={200} />
           <StatCard icon={<Clock color="#A855F7" size={22} />} value={`${timeSavedHours}h`} label="Saved" gradient={['rgba(168,85,247,0.2)', 'rgba(168,85,247,0.05)']} delay={250} />
         </View>
+
+        {uniqueBlockedApps.length > 0 && (
+          <Animated.View entering={FadeInDown.delay(280).springify()} style={styles.simBox}>
+            <LinearGradient
+              colors={['rgba(99,102,241,0.18)', 'rgba(168,85,247,0.06)']}
+              style={styles.simContainer}
+            >
+              <View style={styles.simHeader}>
+                <Zap color="#A855F7" size={18} />
+                <Text style={styles.simTitle}>Simulated Distraction Tester</Text>
+              </View>
+              <Text style={styles.simSubtitle}>
+                Tap any of your chosen apps below to simulate opening it. If its schedule is active, it will be strictly blocked!
+              </Text>
+              <View style={styles.simAppsRow}>
+                {uniqueBlockedApps.map((app) => {
+                  const active = isScheduleActive(app.schedule) && app.schedule.isEnabled;
+                  return (
+                    <TouchableOpacity
+                      key={app.packageName}
+                      onPress={() => handleSimulateAppLaunch(app, app.schedule)}
+                      style={[styles.simAppChip, active && styles.simAppChipActive]}
+                      activeOpacity={0.8}
+                    >
+                      <View style={[styles.simAppDot, active && styles.simAppDotActive]} />
+                      <Text style={[styles.simAppText, active && styles.simAppTextActive]}>
+                        {app.appName}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </LinearGradient>
+          </Animated.View>
+        )}
 
         <Animated.View entering={FadeInUp.delay(300).springify()} style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Your Schedules</Text>
@@ -220,6 +288,19 @@ const styles = StyleSheet.create({
   emptyButtonText: {color: Colors.text, fontSize: 14, fontWeight: '700'},
   fab: {position: 'absolute', right: 24, bottom: 36},
   fabInner: {width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', elevation: 12, shadowColor: Colors.primary, shadowOffset: {width: 0, height: 6}, shadowOpacity: 0.5, shadowRadius: 16},
+  
+  simBox: {marginBottom: 24},
+  simContainer: {padding: 16, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(99,102,241,0.25)', overflow: 'hidden'},
+  simHeader: {flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6},
+  simTitle: {fontSize: 14, fontWeight: '800', color: Colors.text},
+  simSubtitle: {fontSize: 10, color: Colors.textSecondary, lineHeight: 15, marginBottom: 12},
+  simAppsRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 8},
+  simAppChip: {flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.03)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)'},
+  simAppChipActive: {backgroundColor: 'rgba(168,85,247,0.1)', borderColor: 'rgba(168,85,247,0.3)'},
+  simAppDot: {width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.textMuted},
+  simAppDotActive: {backgroundColor: '#A855F7'},
+  simAppText: {fontSize: 11, fontWeight: '600', color: Colors.textSecondary},
+  simAppTextActive: {color: '#E9D5FF'},
 });
 
 export default DashboardScreen;
