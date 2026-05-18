@@ -29,6 +29,34 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 const DAYS: DayOfWeek[] = [0, 1, 2, 3, 4, 5, 6];
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
+function parse24to12(time24: string) {
+  const [hStr, mStr] = time24.split(':');
+  let h = parseInt(hStr || '0', 10);
+  const m = mStr || '00';
+  const period = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return {
+    hours: String(h).padStart(2, '0'),
+    minutes: m.padStart(2, '0'),
+    period
+  };
+}
+
+function convert12to24(hours: string, minutes: string, period: string): string {
+  let h = parseInt(hours || '12', 10);
+  if (isNaN(h) || h < 1 || h > 12) h = 12;
+  let m = parseInt(minutes || '00', 10);
+  if (isNaN(m) || m < 0 || m > 59) m = 0;
+  
+  if (period === 'PM' && h < 12) {
+    h += 12;
+  } else if (period === 'AM' && h === 12) {
+    h = 0;
+  }
+  
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 export default function SchedulesScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -38,22 +66,43 @@ export default function SchedulesScreen() {
   const editing = editingId ? schedules.find((s) => s.id === editingId) : undefined;
 
   const [name, setName] = useState(editing?.name ?? 'My Focus Block');
-  const [startTime, setStartTime] = useState(editing?.startTime ?? '22:00');
-  const [endTime, setEndTime] = useState(editing?.endTime ?? '06:00');
+  
+  const initialStart = parse24to12(editing?.startTime ?? '22:00');
+  const [startH, setStartH] = useState(initialStart.hours);
+  const [startM, setStartM] = useState(initialStart.minutes);
+  const [startPeriod, setStartPeriod] = useState<'AM' | 'PM'>(initialStart.period as 'AM' | 'PM');
+
+  const initialEnd = parse24to12(editing?.endTime ?? '06:00');
+  const [endH, setEndH] = useState(initialEnd.hours);
+  const [endM, setEndM] = useState(initialEnd.minutes);
+  const [endPeriod, setEndPeriod] = useState<'AM' | 'PM'>(initialEnd.period as 'AM' | 'PM');
+
   const [selectedDays, setSelectedDays] = useState<DayOfWeek[]>(editing?.days ?? [1, 2, 3, 4, 5]);
 
   // Update state if editing changes (e.g., coming back from another tab)
   useEffect(() => {
     if (editing) {
       setName(editing.name);
-      setStartTime(editing.startTime);
-      setEndTime(editing.endTime);
       setSelectedDays(editing.days);
+      const s12 = parse24to12(editing.startTime);
+      setStartH(s12.hours);
+      setStartM(s12.minutes);
+      setStartPeriod(s12.period as 'AM' | 'PM');
+
+      const e12 = parse24to12(editing.endTime);
+      setEndH(e12.hours);
+      setEndM(e12.minutes);
+      setEndPeriod(e12.period as 'AM' | 'PM');
     } else {
       setName('My Focus Block');
-      setStartTime('22:00');
-      setEndTime('06:00');
       setSelectedDays([1, 2, 3, 4, 5]);
+      setStartH('10');
+      setStartM('00');
+      setStartPeriod('PM');
+      
+      setEndH('06');
+      setEndM('00');
+      setEndPeriod('AM');
     }
   }, [editingId, editing]);
 
@@ -66,8 +115,10 @@ export default function SchedulesScreen() {
   };
 
   const isOvernight = () => {
-    const [sh, sm] = startTime.split(':').map(Number);
-    const [eh, em] = endTime.split(':').map(Number);
+    const startTime24 = convert12to24(startH, startM, startPeriod);
+    const endTime24 = convert12to24(endH, endM, endPeriod);
+    const [sh, sm] = startTime24.split(':').map(Number);
+    const [eh, em] = endTime24.split(':').map(Number);
     return sh * 60 + (sm || 0) > eh * 60 + (em || 0);
   };
 
@@ -75,11 +126,19 @@ export default function SchedulesScreen() {
     if (!name.trim()) return Alert.alert('Name Required', 'Please enter a schedule name.');
     if (selectedDays.length === 0) return Alert.alert('Days Required', 'Please select at least one day.');
 
+    // Validate times are filled
+    if (!startH || !startM || !endH || !endM) {
+      return Alert.alert('Time Required', 'Please complete the Start and End times.');
+    }
+
+    const startTime24 = convert12to24(startH, startM, startPeriod);
+    const endTime24 = convert12to24(endH, endM, endPeriod);
+
     const schedule: BlockSchedule = {
       id: editingId ?? generateId(),
       name: name.trim(),
-      startTime,
-      endTime,
+      startTime: startTime24,
+      endTime: endTime24,
       days: selectedDays,
       blockedApps: blockedApps,
       isEnabled: editing?.isEnabled ?? true,
@@ -144,27 +203,97 @@ export default function SchedulesScreen() {
           <View style={styles.timeCol}>
             <Text style={styles.sectionLabel}>START TIME</Text>
             <View style={styles.timeCard}>
-              <TextInput 
-                style={styles.timeText} 
-                value={startTime} 
-                onChangeText={setStartTime}
-                keyboardType="numeric"
-                maxLength={5}
-              />
-              <Clock color="#A0A0A0" size={20} />
+              <View style={styles.timeInputRow}>
+                <TextInput 
+                  style={styles.timeInputText} 
+                  value={startH} 
+                  onChangeText={(val) => {
+                    const clean = val.replace(/[^0-9]/g, '');
+                    setStartH(clean);
+                  }}
+                  keyboardType="numeric"
+                  maxLength={2}
+                  placeholder="10"
+                  placeholderTextColor="#777"
+                />
+                <Text style={styles.timeSeparator}>:</Text>
+                <TextInput 
+                  style={styles.timeInputText} 
+                  value={startM} 
+                  onChangeText={(val) => {
+                    const clean = val.replace(/[^0-9]/g, '');
+                    setStartM(clean);
+                  }}
+                  keyboardType="numeric"
+                  maxLength={2}
+                  placeholder="00"
+                  placeholderTextColor="#777"
+                />
+              </View>
+              <View style={styles.periodToggle}>
+                <TouchableOpacity 
+                  onPress={() => setStartPeriod('AM')}
+                  style={[styles.periodBtn, startPeriod === 'AM' && styles.periodBtnActive]}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.periodBtnText, startPeriod === 'AM' && styles.periodBtnTextActive]}>AM</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={() => setStartPeriod('PM')}
+                  style={[styles.periodBtn, startPeriod === 'PM' && styles.periodBtnActive]}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.periodBtnText, startPeriod === 'PM' && styles.periodBtnTextActive]}>PM</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
           <View style={styles.timeCol}>
             <Text style={styles.sectionLabel}>END TIME</Text>
             <View style={styles.timeCard}>
-              <TextInput 
-                style={styles.timeText} 
-                value={endTime} 
-                onChangeText={setEndTime}
-                keyboardType="numeric"
-                maxLength={5}
-              />
-              <RotateCcw color="#A0A0A0" size={20} />
+              <View style={styles.timeInputRow}>
+                <TextInput 
+                  style={styles.timeInputText} 
+                  value={endH} 
+                  onChangeText={(val) => {
+                    const clean = val.replace(/[^0-9]/g, '');
+                    setEndH(clean);
+                  }}
+                  keyboardType="numeric"
+                  maxLength={2}
+                  placeholder="06"
+                  placeholderTextColor="#777"
+                />
+                <Text style={styles.timeSeparator}>:</Text>
+                <TextInput 
+                  style={styles.timeInputText} 
+                  value={endM} 
+                  onChangeText={(val) => {
+                    const clean = val.replace(/[^0-9]/g, '');
+                    setEndM(clean);
+                  }}
+                  keyboardType="numeric"
+                  maxLength={2}
+                  placeholder="00"
+                  placeholderTextColor="#777"
+                />
+              </View>
+              <View style={styles.periodToggle}>
+                <TouchableOpacity 
+                  onPress={() => setEndPeriod('AM')}
+                  style={[styles.periodBtn, endPeriod === 'AM' && styles.periodBtnActive]}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.periodBtnText, endPeriod === 'AM' && styles.periodBtnTextActive]}>AM</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={() => setEndPeriod('PM')}
+                  style={[styles.periodBtn, endPeriod === 'PM' && styles.periodBtnActive]}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.periodBtnText, endPeriod === 'PM' && styles.periodBtnTextActive]}>PM</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </View>
@@ -317,16 +446,56 @@ const styles = StyleSheet.create({
   timeCard: {
     backgroundColor: '#1C1C1E',
     borderRadius: 16,
-    padding: 20,
+    padding: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.03)',
   },
-  timeText: {
+  timeInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  timeInputText: {
     color: '#ffffff',
-    fontSize: 24,
-    fontWeight: '600',
-    minWidth: 70,
+    fontSize: 20,
+    fontWeight: '700',
+    width: 28,
+    textAlign: 'center',
+    padding: 0,
+  },
+  timeSeparator: {
+    color: '#4ADE80',
+    fontSize: 18,
+    fontWeight: '800',
+    marginHorizontal: 1,
+  },
+  periodToggle: {
+    flexDirection: 'column',
+    gap: 3,
+    backgroundColor: '#121212',
+    padding: 3,
+    borderRadius: 8,
+  },
+  periodBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  periodBtnActive: {
+    backgroundColor: '#4ADE80',
+  },
+  periodBtnText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#8E8E93',
+  },
+  periodBtnTextActive: {
+    color: '#121212',
   },
   infoCard: {
     backgroundColor: '#0F291E',
