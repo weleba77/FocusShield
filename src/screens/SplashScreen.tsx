@@ -25,7 +25,7 @@ const SplashScreen: React.FC<Props> = ({navigation}) => {
 
   const navigate = () => {
     if (!hasOnboarded) navigation.replace('Onboarding');
-    else navigation.replace('Home');
+    else navigation.replace('MainTabs');
   };
 
   useEffect(() => {

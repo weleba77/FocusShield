@@ -18,10 +18,10 @@ export const Colors = {
   text: '#F1F5F9',
   textSecondary: '#94A3B8',
   textMuted: '#64748B',
-  gradientPrimary: ['#6366F1', '#A855F7'] as string[],
-  gradientDark: ['#0A0E1A', '#111827'] as string[],
-  gradientCard: ['#141B2D', '#1A2236'] as string[],
-  gradientSuccess: ['#059669', '#10B981'] as string[],
+  gradientPrimary: ['#6366F1', '#A855F7'] as [string, string],
+  gradientDark: ['#0A0E1A', '#111827'] as [string, string],
+  gradientCard: ['#141B2D', '#1A2236'] as [string, string],
+  gradientSuccess: ['#059669', '#10B981'] as [string, string],
 };
 
 export const Spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48 };

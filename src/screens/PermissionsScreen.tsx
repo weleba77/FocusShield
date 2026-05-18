@@ -27,7 +27,7 @@ const PermissionsScreen: React.FC<Props> = ({navigation}) => {
 
   const handleContinue = () => {
     setHasPermissions(true);
-    navigation.replace('Home');
+    navigation.replace('MainTabs');
   };
 
   const permissions = [
@@ -102,7 +102,7 @@ const PermissionsScreen: React.FC<Props> = ({navigation}) => {
         <Animated.View entering={FadeInUp.delay(700).springify()} style={styles.btnContainer}>
           <TouchableOpacity onPress={handleContinue} disabled={!allGranted} activeOpacity={0.85}>
             <LinearGradient
-              colors={allGranted ? Colors.gradientPrimary : (['#1E2640', '#1E2640'] as string[])}
+              colors={allGranted ? Colors.gradientPrimary : (['#1E2640', '#1E2640'] as [string, string])}
               start={[0, 0]} end={[1, 0]}
               style={[styles.continueBtn, !allGranted && styles.disabledBtn]}>
               <Text style={[styles.continueText, !allGranted && styles.disabledText]}>
