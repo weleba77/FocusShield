@@ -25,6 +25,10 @@ interface ScheduleState {
   setHasOnboarded: (v: boolean) => void;
   setHasPermissions: (v: boolean) => void;
   getNextBlockTime: () => string | null;
+  incrementBlockedAttempts: () => void;
+  addFocusMinutes: (minutes: number) => void;
+  incrementStreak: () => void;
+  resetStats: () => void;
 }
 
 export const useScheduleStore = create<ScheduleState>()(
@@ -44,6 +48,18 @@ export const useScheduleStore = create<ScheduleState>()(
         set((state) => ({ schedules: state.schedules.map((s) => s.id === id ? { ...s, isEnabled: !s.isEnabled } : s) })),
       setHasOnboarded: (v) => set({ hasOnboarded: v }),
       setHasPermissions: (v) => set({ hasPermissions: v }),
+      incrementBlockedAttempts: () => set((state) => ({
+        stats: { ...state.stats, totalBlockedAttempts: state.stats.totalBlockedAttempts + 1 }
+      })),
+      addFocusMinutes: (minutes) => set((state) => ({
+        stats: { ...state.stats, totalFocusMinutes: state.stats.totalFocusMinutes + minutes }
+      })),
+      incrementStreak: () => set((state) => ({
+        stats: { ...state.stats, streak: state.stats.streak + 1 }
+      })),
+      resetStats: () => set({
+        stats: { totalBlockedAttempts: 0, totalFocusMinutes: 0, streak: 0, lastUpdated: new Date().toDateString() }
+      }),
 
       getNextBlockTime: () => {
         const { schedules } = get();
