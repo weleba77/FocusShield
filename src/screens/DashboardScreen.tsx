@@ -21,8 +21,15 @@ const StatCard: React.FC<{icon: React.ReactNode; value: string; label: string; g
   </Animated.View>
 );
 
-const ScheduleCard: React.FC<{schedule: BlockSchedule; onToggle: () => void; onDelete: () => void; onEdit: () => void; onPreview: () => void}> = ({schedule, onToggle, onDelete, onEdit, onPreview}) => {
-  const active = isScheduleActive(schedule);
+const ScheduleCard: React.FC<{
+  schedule: BlockSchedule;
+  onToggle: () => void;
+  onDelete: () => void;
+  onEdit: () => void;
+  onPreview: () => void;
+  isActiveOverride?: boolean;
+}> = ({schedule, onToggle, onDelete, onEdit, onPreview, isActiveOverride}) => {
+  const active = isActiveOverride !== undefined ? isActiveOverride : isScheduleActive(schedule);
   return (
     <Animated.View layout={Layout.springify()} entering={FadeInUp.springify()}>
       <TouchableOpacity style={[styles.scheduleCard, active && styles.scheduleCardActive]} onPress={onEdit} activeOpacity={0.85}>
@@ -86,19 +93,23 @@ const DashboardScreen: React.FC<Props> = ({navigation}) => {
   }, [navigation]);
 
   const handleSimulateAppLaunch = useCallback((app: any, schedule: BlockSchedule) => {
+    const isEnforcedByFocus = activeSession && activeSession.enforcedScheduleId === schedule.id;
     const activeSchedule = schedules.find(s => 
       s.isEnabled && 
-      isScheduleActive(s) && 
+      (isScheduleActive(s) || (activeSession && activeSession.enforcedScheduleId === s.id)) && 
       s.blockedApps.some(a => a.packageName === app.packageName)
     );
 
     if (activeSchedule) {
       incrementBlockedAttempts();
-      navigation.navigate('BlockingPreview', {appName: app.appName, endTime: activeSchedule.endTime});
+      const endTimeDisplay = (activeSession && activeSession.enforcedScheduleId === activeSchedule.id)
+        ? new Date(activeSession.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : formatTime(activeSchedule.endTime);
+      navigation.navigate('BlockingPreview', {appName: app.appName, endTime: endTimeDisplay});
     } else {
       Alert.alert(
         'App Opened: Allowed',
-        `"${app.appName}" opened successfully!\n\nIt is NOT blocked right now because its schedule ("${schedule.name}") is either disabled or currently outside its active time block (${formatTime(schedule.startTime)} - ${formatTime(schedule.endTime)}).`,
+        `"${app.appName}" opened successfully!\n\nIt is NOT blocked right now because its schedule ("${schedule.name}") is either disabled, outside its active time block (${formatTime(schedule.startTime)} - ${formatTime(schedule.endTime)}), or not paired with an active Focus session.`,
         [
           { text: 'Got it' },
           { 
@@ -110,7 +121,7 @@ const DashboardScreen: React.FC<Props> = ({navigation}) => {
         ]
       );
     }
-  }, [schedules, toggleSchedule, incrementBlockedAttempts, navigation]);
+  }, [schedules, toggleSchedule, incrementBlockedAttempts, navigation, activeSession]);
 
   const uniqueBlockedApps = schedules.flatMap(s => 
     s.blockedApps.map(app => ({ ...app, schedule: s }))
@@ -185,7 +196,7 @@ const DashboardScreen: React.FC<Props> = ({navigation}) => {
               </Text>
               <View style={styles.simAppsRow}>
                 {uniqueBlockedApps.map((app) => {
-                  const active = isScheduleActive(app.schedule) && app.schedule.isEnabled;
+                  const active = (isScheduleActive(app.schedule) || (activeSession && activeSession.enforcedScheduleId === app.schedule.id)) && app.schedule.isEnabled;
                   return (
                     <TouchableOpacity
                       key={app.packageName}
@@ -215,6 +226,7 @@ const DashboardScreen: React.FC<Props> = ({navigation}) => {
             {schedules.map((s) => (
               <ScheduleCard
                 key={s.id} schedule={s}
+                isActiveOverride={activeSession && activeSession.enforcedScheduleId === s.id ? true : undefined}
                 onToggle={() => {
                   if (activeSession && activeSession.enforcedScheduleId === s.id) {
                     Alert.alert(
