@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useCallback} from 'react';
-import {View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, StatusBar} from 'react-native';
+import {View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, StatusBar, Alert} from 'react-native';
 import Animated, {FadeInUp, FadeInDown, Layout} from 'react-native-reanimated';
 import {LinearGradient} from 'expo-linear-gradient';
 import {ArrowLeft, Search, Check, X} from 'lucide-react-native';
@@ -33,7 +33,7 @@ const AppRow: React.FC<{app: AppInfo; isSelected: boolean; onToggle: () => void;
 );
 
 const AppSelectionScreen: React.FC<Props> = ({navigation, route}) => {
-  const {schedules, updateSchedule} = useScheduleStore();
+  const {schedules, updateSchedule, activeSession} = useScheduleStore();
   const {scheduleId} = route.params;
   const schedule = schedules.find(s => s.id === scheduleId);
 
@@ -53,6 +53,14 @@ const AppSelectionScreen: React.FC<Props> = ({navigation, route}) => {
   const isSelected = (app: AppInfo) => selected.some(a => a.packageName === app.packageName);
 
   const handleDone = () => {
+    if (scheduleId && activeSession && activeSession.enforcedScheduleId === scheduleId) {
+      Alert.alert(
+        'Selection Locked! 🛡️',
+        'This schedule is currently active or enforced by Focus Shield Mode. You cannot change its apps.',
+        [{ text: 'Go Back', onPress: () => navigation.goBack() }]
+      );
+      return;
+    }
     if (schedule) updateSchedule(scheduleId, {blockedApps: selected});
     navigation.goBack();
   };

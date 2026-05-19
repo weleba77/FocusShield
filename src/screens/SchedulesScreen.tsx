@@ -5,11 +5,11 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   StatusBar,
   TextInput,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Shield,
   Clock,
@@ -61,9 +61,19 @@ export default function SchedulesScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   
-  const { schedules, addSchedule, updateSchedule } = useScheduleStore();
+  const { schedules, addSchedule, updateSchedule, activeSession } = useScheduleStore();
   const editingId = route.params?.scheduleId;
   const editing = editingId ? schedules.find((s) => s.id === editingId) : undefined;
+
+  useEffect(() => {
+    if (editingId && activeSession && activeSession.enforcedScheduleId === editingId) {
+      Alert.alert(
+        'Schedule Locked! 🛡️',
+        'This schedule is currently active or enforced by Focus Shield Mode. You cannot edit it.',
+        [{ text: 'Go Back', onPress: () => navigation.goBack() }]
+      );
+    }
+  }, [editingId, activeSession, navigation]);
 
   const [name, setName] = useState(editing?.name ?? 'My Focus Block');
   
@@ -123,6 +133,14 @@ export default function SchedulesScreen() {
   };
 
   const handleSave = () => {
+    if (editingId && activeSession && activeSession.enforcedScheduleId === editingId) {
+      Alert.alert(
+        'Save Blocked! 🛡️',
+        'This schedule is currently active or enforced by Focus Shield Mode. You cannot save changes to it.',
+        [{ text: 'Got it' }]
+      );
+      return;
+    }
     if (!name.trim()) return Alert.alert('Name Required', 'Please enter a schedule name.');
     if (selectedDays.length === 0) return Alert.alert('Days Required', 'Please select at least one day.');
 
@@ -157,6 +175,14 @@ export default function SchedulesScreen() {
   };
 
   const handleSelectApps = () => {
+    if (editingId && activeSession && activeSession.enforcedScheduleId === editingId) {
+      Alert.alert(
+        'Selection Blocked! 🛡️',
+        'This schedule is currently active or enforced by Focus Shield Mode. You cannot change its apps.',
+        [{ text: 'Got it' }]
+      );
+      return;
+    }
     if (!editingId) {
       Alert.alert(
         'Save First',

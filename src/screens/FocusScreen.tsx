@@ -9,14 +9,22 @@ import {
   Animated as RNAnimated,
   Easing,
   Vibration,
+  Alert,
 } from 'react-native';
 import {LinearGradient} from 'expo-linear-gradient';
-import {Play, Pause, RotateCcw, Brain, Shield, Award, AlertCircle} from 'lucide-react-native';
+import {Play, Pause, RotateCcw, Brain, Shield, Award, AlertCircle, Lock} from 'lucide-react-native';
 import {useScheduleStore} from '../store/useScheduleStore';
 import {Colors, Spacing} from '../utils/theme';
 
 export default function FocusScreen() {
-  const {schedules, addFocusMinutes, incrementStreak} = useScheduleStore();
+  const {
+    schedules,
+    addFocusMinutes,
+    incrementStreak,
+    activeSession,
+    startFocusSession,
+    clearFocusSession,
+  } = useScheduleStore();
   
   // Timer States
   const [selectedPreset, setSelectedPreset] = useState<number>(25); // in minutes
@@ -67,11 +75,56 @@ export default function FocusScreen() {
     }
   }, [isActive, pulseAnim, glowAnim]);
 
+  // Session Completed
+  const handleSessionComplete = () => {
+    setIsActive(false);
+    const minutesLogged = activeSession ? activeSession.durationMinutes : selectedPreset;
+    addFocusMinutes(minutesLogged);
+    incrementStreak();
+    setCompleted(true);
+    clearFocusSession();
+    Vibration.vibrate([0, 500, 110, 500]); // Vibrate twice on completion
+  };
+
+  // Load persisted session on mount/focus
+  useEffect(() => {
+    if (activeSession) {
+      const now = Date.now();
+      if (now < activeSession.endTime) {
+        const remaining = Math.ceil((activeSession.endTime - now) / 1000);
+        setTimeLeft(remaining);
+        setIsActive(true);
+        setSelectedPreset(activeSession.durationMinutes);
+        setEnforcedScheduleId(activeSession.enforcedScheduleId || '');
+        setCompleted(false);
+      } else {
+        // Active session finished while app was closed
+        handleSessionComplete();
+      }
+    }
+  }, [activeSession]);
+
   // Main Timer Logic
   useEffect(() => {
     if (isActive && timeLeft > 0) {
       timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
+        if (activeSession) {
+          const now = Date.now();
+          const remaining = Math.max(0, Math.ceil((activeSession.endTime - now) / 1000));
+          setTimeLeft(remaining);
+          if (remaining === 0) {
+            handleSessionComplete();
+          }
+        } else {
+          setTimeLeft((prev) => {
+            const next = prev - 1;
+            if (next <= 0) {
+              handleSessionComplete();
+              return 0;
+            }
+            return next;
+          });
+        }
       }, 1000);
     } else if (timeLeft === 0 && isActive) {
       handleSessionComplete();
@@ -80,7 +133,7 @@ export default function FocusScreen() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isActive, timeLeft]);
+  }, [isActive, timeLeft, activeSession]);
 
   // Handle Preset Change
   const handlePresetSelect = (minutes: number) => {
@@ -92,27 +145,38 @@ export default function FocusScreen() {
 
   // Toggle Timer Play/Pause
   const toggleTimer = () => {
+    if (isActive) {
+      Alert.alert(
+        'Focus Mode Enforced! 🛡️',
+        'Strict Focus is active. You cannot pause, stop, or reset this session until the timeline completes.\n\nKeep focusing, you can do this!',
+        [{ text: 'Stay Focused', style: 'default' }]
+      );
+      return;
+    }
+
     if (completed) {
       setCompleted(false);
       setTimeLeft(selectedPreset * 60);
     }
-    setIsActive(!isActive);
+    
+    // Starting a new session
+    startFocusSession(selectedPreset, enforcedScheduleId || null);
+    setIsActive(true);
   };
 
   // Reset Timer
   const resetTimer = () => {
+    if (isActive) {
+      Alert.alert(
+        'Reset Blocked! 🛡️',
+        'You cannot reset the timer during an active strict focus session.',
+        [{ text: 'Got it', style: 'default' }]
+      );
+      return;
+    }
     setIsActive(false);
     setTimeLeft(selectedPreset * 60);
     setCompleted(false);
-  };
-
-  // Session Completed
-  const handleSessionComplete = () => {
-    setIsActive(false);
-    addFocusMinutes(selectedPreset);
-    incrementStreak();
-    setCompleted(true);
-    Vibration.vibrate([0, 500, 110, 500]); // Vibrate twice on completion
   };
 
   // Format MM:SS
@@ -167,18 +231,22 @@ export default function FocusScreen() {
 
         {/* Timer Actions */}
         <View style={styles.actionsRow}>
-          <TouchableOpacity onPress={resetTimer} style={styles.secondaryBtn} activeOpacity={0.75}>
+          <TouchableOpacity 
+            onPress={resetTimer} 
+            style={[styles.secondaryBtn, isActive && { opacity: 0.4 }]} 
+            activeOpacity={isActive ? 1 : 0.75}
+          >
             <RotateCcw color={Colors.textSecondary} size={22} />
           </TouchableOpacity>
 
           <TouchableOpacity onPress={toggleTimer} activeOpacity={0.85}>
             <LinearGradient
-              colors={isActive ? ['#EF4444', '#DC2626'] : Colors.gradientPrimary}
+              colors={isActive ? ['#312E81', '#1E1B4B'] : Colors.gradientPrimary}
               start={[0, 0]} end={[1, 0]}
-              style={styles.primaryBtn}
+              style={[styles.primaryBtn, isActive && { borderColor: 'rgba(99,102,241,0.5)', borderWidth: 1 }]}
             >
               {isActive ? (
-                <Pause color={Colors.text} size={24} fill={Colors.text} />
+                <Lock color="#818CF8" size={24} />
               ) : (
                 <Play color={Colors.text} size={24} fill={Colors.text} style={styles.playIcon} />
               )}
@@ -240,7 +308,17 @@ export default function FocusScreen() {
                 return (
                   <TouchableOpacity
                     key={s.id}
-                    onPress={() => setEnforcedScheduleId(isEnforced ? '' : s.id)}
+                    onPress={() => {
+                      if (isActive) {
+                        Alert.alert(
+                          'Schedule Locked! 🛡️',
+                          'You cannot change the enforced schedule during an active focus session.',
+                          [{ text: 'Got it', style: 'default' }]
+                        );
+                        return;
+                      }
+                      setEnforcedScheduleId(isEnforced ? '' : s.id);
+                    }}
                     style={[
                       styles.scheduleChip,
                       isEnforced && styles.scheduleChipActive,

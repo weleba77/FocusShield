@@ -73,7 +73,7 @@ const ScheduleCard: React.FC<{schedule: BlockSchedule; onToggle: () => void; onD
 };
 
 const DashboardScreen: React.FC<Props> = ({navigation}) => {
-  const {schedules, stats, toggleSchedule, deleteSchedule, getNextBlockTime, incrementBlockedAttempts} = useScheduleStore();
+  const {schedules, stats, toggleSchedule, deleteSchedule, getNextBlockTime, incrementBlockedAttempts, activeSession} = useScheduleStore();
 
   const activeCount = schedules.filter(s => s.isEnabled && isScheduleActive(s)).length;
   const totalAppsBlocked = [...new Set(schedules.flatMap(s => s.blockedApps.map(a => a.packageName)))].length;
@@ -215,12 +215,42 @@ const DashboardScreen: React.FC<Props> = ({navigation}) => {
             {schedules.map((s) => (
               <ScheduleCard
                 key={s.id} schedule={s}
-                onToggle={() => toggleSchedule(s.id)}
-                onDelete={() => Alert.alert('Delete Schedule', `Delete "${s.name}"?`, [
-                  {text: 'Cancel', style: 'cancel'},
-                  {text: 'Delete', style: 'destructive', onPress: () => deleteSchedule(s.id)},
-                ])}
-                onEdit={() => navigation.navigate('Schedules', {scheduleId: s.id})}
+                onToggle={() => {
+                  if (activeSession && activeSession.enforcedScheduleId === s.id) {
+                    Alert.alert(
+                      'Schedule Locked! 🛡️',
+                      `"${s.name}" is currently enforced by your active Focus Session and cannot be disabled until the session completes.`,
+                      [{text: 'Got it'}]
+                    );
+                    return;
+                  }
+                  toggleSchedule(s.id);
+                }}
+                onDelete={() => {
+                  if (activeSession && activeSession.enforcedScheduleId === s.id) {
+                    Alert.alert(
+                      'Schedule Locked! 🛡️',
+                      `"${s.name}" is currently enforced by your active Focus Session and cannot be deleted until the session completes.`,
+                      [{text: 'Got it'}]
+                    );
+                    return;
+                  }
+                  Alert.alert('Delete Schedule', `Delete "${s.name}"?`, [
+                    {text: 'Cancel', style: 'cancel'},
+                    {text: 'Delete', style: 'destructive', onPress: () => deleteSchedule(s.id)},
+                  ]);
+                }}
+                onEdit={() => {
+                  if (activeSession && activeSession.enforcedScheduleId === s.id) {
+                    Alert.alert(
+                      'Schedule Locked! 🛡️',
+                      `"${s.name}" is currently enforced by your active Focus Session and cannot be edited until the session completes.`,
+                      [{text: 'Got it'}]
+                    );
+                    return;
+                  }
+                  navigation.navigate('Schedules', {scheduleId: s.id});
+                }}
                 onPreview={() => handlePreview(s)}
               />
             ))}

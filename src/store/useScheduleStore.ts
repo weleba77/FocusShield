@@ -10,6 +10,13 @@ export interface BlockSchedule {
   days: DayOfWeek[]; blockedApps: AppInfo[]; isEnabled: boolean; createdAt: number;
 }
 
+export interface FocusSession {
+  startTime: number;
+  endTime: number;
+  durationMinutes: number;
+  enforcedScheduleId: string | null;
+}
+
 export interface FocusStats {
   totalBlockedAttempts: number; totalFocusMinutes: number;
   streak: number; lastUpdated: string;
@@ -18,6 +25,7 @@ export interface FocusStats {
 interface ScheduleState {
   schedules: BlockSchedule[]; stats: FocusStats;
   hasOnboarded: boolean; hasPermissions: boolean;
+  activeSession: FocusSession | null;
   addSchedule: (s: BlockSchedule) => void;
   updateSchedule: (id: string, updates: Partial<BlockSchedule>) => void;
   deleteSchedule: (id: string) => void;
@@ -29,6 +37,8 @@ interface ScheduleState {
   addFocusMinutes: (minutes: number) => void;
   incrementStreak: () => void;
   resetStats: () => void;
+  startFocusSession: (minutes: number, scheduleId: string | null) => void;
+  clearFocusSession: () => void;
 }
 
 export const useScheduleStore = create<ScheduleState>()(
@@ -38,6 +48,7 @@ export const useScheduleStore = create<ScheduleState>()(
       stats: { totalBlockedAttempts: 0, totalFocusMinutes: 0, streak: 3, lastUpdated: new Date().toDateString() },
       hasOnboarded: false,
       hasPermissions: false,
+      activeSession: null,
 
       addSchedule: (s) => set((state) => ({ schedules: [...state.schedules, s] })),
       updateSchedule: (id, updates) =>
@@ -60,6 +71,19 @@ export const useScheduleStore = create<ScheduleState>()(
       resetStats: () => set({
         stats: { totalBlockedAttempts: 0, totalFocusMinutes: 0, streak: 0, lastUpdated: new Date().toDateString() }
       }),
+      startFocusSession: (minutes, scheduleId) => {
+        const startTime = Date.now();
+        const endTime = startTime + minutes * 60 * 1000;
+        set({
+          activeSession: {
+            startTime,
+            endTime,
+            durationMinutes: minutes,
+            enforcedScheduleId: scheduleId,
+          },
+        });
+      },
+      clearFocusSession: () => set({ activeSession: null }),
 
       getNextBlockTime: () => {
         const { schedules } = get();
