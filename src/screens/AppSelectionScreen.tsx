@@ -1,5 +1,7 @@
 import React, {useState, useEffect, useCallback} from 'react';
-import {View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, StatusBar, Alert} from 'react-native';
+import {View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, StatusBar, Alert, NativeModules, Platform, ActivityIndicator} from 'react-native';
+
+const { FocusShieldModule } = NativeModules;
 import Animated, {FadeInUp, FadeInDown, Layout} from 'react-native-reanimated';
 import {LinearGradient} from 'expo-linear-gradient';
 import {ArrowLeft, Search, Check, X} from 'lucide-react-native';
@@ -37,14 +39,36 @@ const AppSelectionScreen: React.FC<Props> = ({navigation, route}) => {
   const {scheduleId} = route.params;
   const schedule = schedules.find(s => s.id === scheduleId);
 
+  const [allApps, setAllApps] = useState<AppInfo[]>(DEMO_APPS);
   const [filtered, setFiltered] = useState<AppInfo[]>(DEMO_APPS);
   const [selected, setSelected] = useState<AppInfo[]>(schedule?.blockedApps ?? []);
   const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchInstalledApps = async () => {
+      if (Platform.OS === 'android' && FocusShieldModule && FocusShieldModule.getInstalledApps) {
+        try {
+          setLoading(true);
+          const apps: AppInfo[] = await FocusShieldModule.getInstalledApps();
+          // Sort apps alphabetically
+          const sortedApps = apps.sort((a, b) => a.appName.localeCompare(b.appName));
+          setAllApps(sortedApps);
+          setFiltered(sortedApps);
+        } catch (e) {
+          console.warn("Failed to fetch installed apps natively, falling back to demo list", e);
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+    fetchInstalledApps();
+  }, []);
 
   useEffect(() => {
     const q = search.toLowerCase();
-    setFiltered(DEMO_APPS.filter(a => a.appName.toLowerCase().includes(q) || a.packageName.toLowerCase().includes(q)));
-  }, [search]);
+    setFiltered(allApps.filter(a => a.appName.toLowerCase().includes(q) || a.packageName.toLowerCase().includes(q)));
+  }, [search, allApps]);
 
   const toggleApp = useCallback((app: AppInfo) => {
     setSelected(prev => prev.some(a => a.packageName === app.packageName) ? prev.filter(a => a.packageName !== app.packageName) : [...prev, app]);
@@ -107,16 +131,23 @@ const AppSelectionScreen: React.FC<Props> = ({navigation, route}) => {
         />
       )}
 
-      <FlatList
-        data={filtered}
-        keyExtractor={i => i.packageName}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        renderItem={({item, index}) => (
-          <AppRow app={item} isSelected={isSelected(item)} onToggle={() => toggleApp(item)} index={index} />
-        )}
-        ListEmptyComponent={<View style={styles.empty}><Text style={styles.emptyText}>No apps found</Text></View>}
-      />
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Reading installed apps...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={i => i.packageName}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          renderItem={({item, index}) => (
+            <AppRow app={item} isSelected={isSelected(item)} onToggle={() => toggleApp(item)} index={index} />
+          )}
+          ListEmptyComponent={<View style={styles.empty}><Text style={styles.emptyText}>No apps found</Text></View>}
+        />
+      )}
     </LinearGradient>
   );
 };
@@ -151,6 +182,8 @@ const styles = StyleSheet.create({
   checkboxActive: {backgroundColor: Colors.primary, borderColor: Colors.primary},
   empty: {paddingVertical: 48, alignItems: 'center'},
   emptyText: {color: Colors.textMuted, fontSize: 14},
+  loadingContainer: {flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16},
+  loadingText: {color: Colors.textMuted, fontSize: 14, fontWeight: '500'},
 });
 
 export default AppSelectionScreen;
