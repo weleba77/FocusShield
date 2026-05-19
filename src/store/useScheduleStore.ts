@@ -1,6 +1,27 @@
 import {create} from 'zustand';
 import {persist, createJSONStorage} from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { NativeModules, Platform } from 'react-native';
+
+const { FocusShieldModule } = NativeModules;
+
+const syncNativeBlockedPackages = (packages: string[]) => {
+  if (Platform.OS === 'android' && FocusShieldModule) {
+    FocusShieldModule.setBlockedPackages(packages);
+  }
+};
+
+const startNativeForegroundService = (durationMinutes: number, endTime: number) => {
+  if (Platform.OS === 'android' && FocusShieldModule) {
+    FocusShieldModule.startFocusService(durationMinutes, endTime);
+  }
+};
+
+const stopNativeForegroundService = () => {
+  if (Platform.OS === 'android' && FocusShieldModule) {
+    FocusShieldModule.stopFocusService();
+  }
+};
 
 export interface AppInfo { packageName: string; appName: string }
 export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -82,8 +103,24 @@ export const useScheduleStore = create<ScheduleState>()(
             enforcedScheduleId: scheduleId,
           },
         });
+
+        // Bridge to native Android app blocker
+        if (scheduleId) {
+          const schedule = get().schedules.find((s) => s.id === scheduleId);
+          if (schedule) {
+            const packages = schedule.blockedApps.map((app) => app.packageName);
+            syncNativeBlockedPackages(packages);
+          }
+        } else {
+          syncNativeBlockedPackages([]);
+        }
+        startNativeForegroundService(minutes, endTime);
       },
-      clearFocusSession: () => set({ activeSession: null }),
+      clearFocusSession: () => {
+        set({ activeSession: null });
+        stopNativeForegroundService();
+        syncNativeBlockedPackages([]);
+      },
 
       getNextBlockTime: () => {
         const { schedules } = get();
