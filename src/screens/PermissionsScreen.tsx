@@ -1,5 +1,5 @@
-import React, {useState} from 'react';
-import {View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Alert} from 'react-native';
+import React, {useState, useEffect, useRef} from 'react';
+import {View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Alert, NativeModules, Platform, AppState} from 'react-native';
 import Animated, {FadeInDown, FadeInUp} from 'react-native-reanimated';
 import {LinearGradient} from 'expo-linear-gradient';
 import {Eye, Layers, ChevronRight, CheckCircle2, Shield} from 'lucide-react-native';
@@ -8,19 +8,54 @@ import {RootStackParamList} from '../navigation/AppNavigator';
 import {useScheduleStore} from '../store/useScheduleStore';
 import {Colors, Spacing, BorderRadius, Typography} from '../utils/theme';
 
+const { FocusShieldModule } = NativeModules;
+
 type Props = {navigation: StackNavigationProp<RootStackParamList, 'Permissions'>};
 
 const PermissionsScreen: React.FC<Props> = ({navigation}) => {
   const {setHasPermissions} = useScheduleStore();
-  // In Expo preview, simulate both permissions as granted
   const [granted, setGranted] = useState({usageStats: false, overlay: false});
+  const appState = useRef(AppState.currentState);
 
-  const grantMock = (key: 'usageStats' | 'overlay') => {
-    Alert.alert(
-      '📱 Expo Preview Mode',
-      `In the real app, this would open Android Settings to enable "${key === 'usageStats' ? 'Usage Access' : 'Display Over Apps'}" permission.\n\nFor this preview, tap OK to simulate granting it.`,
-      [{text: 'OK', onPress: () => setGranted(prev => ({...prev, [key]: true}))}],
-    );
+  const checkRealPermissions = async () => {
+    if (Platform.OS === 'android' && FocusShieldModule && FocusShieldModule.checkPermissions) {
+      try {
+        const perms = await FocusShieldModule.checkPermissions();
+        setGranted({
+          usageStats: perms.usage,
+          overlay: perms.overlay
+        });
+      } catch (e) {
+        console.warn("Failed to check permissions natively", e);
+      }
+    }
+  };
+
+  useEffect(() => {
+    checkRealPermissions();
+
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        checkRealPermissions();
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  const handleRequestPermission = async (key: 'usageStats' | 'overlay') => {
+    if (Platform.OS === 'android' && FocusShieldModule && FocusShieldModule.requestPermissions) {
+      FocusShieldModule.requestPermissions();
+    } else {
+      Alert.alert(
+        '📱 Expo Preview Mode',
+        `Simulating granting "${key === 'usageStats' ? 'Usage Access' : 'Display Over Apps'}" permission.`,
+        [{text: 'OK', onPress: () => setGranted(prev => ({...prev, [key]: true}))}],
+      );
+    }
   };
 
   const allGranted = granted.usageStats && granted.overlay;
@@ -55,9 +90,11 @@ const PermissionsScreen: React.FC<Props> = ({navigation}) => {
           </LinearGradient>
           <Text style={styles.title}>Enable Permissions</Text>
           <Text style={styles.subtitle}>Focus Shield needs two permissions to protect your focus.</Text>
-          <View style={styles.expoBanner}>
-            <Text style={styles.expoText}>📱 Expo Preview — tap to simulate granting</Text>
-          </View>
+          {Platform.OS !== 'android' && (
+            <View style={styles.expoBanner}>
+              <Text style={styles.expoText}>📱 Expo Preview — tap to simulate granting</Text>
+            </View>
+          )}
         </Animated.View>
 
         <View style={styles.permsContainer}>
@@ -67,7 +104,7 @@ const PermissionsScreen: React.FC<Props> = ({navigation}) => {
               <Animated.View key={perm.id} entering={FadeInUp.delay(200 + i * 150).springify()}>
                 <TouchableOpacity
                   style={[styles.permCard, isGranted && styles.permCardGranted]}
-                  onPress={() => !isGranted && grantMock(perm.id)}
+                  onPress={() => !isGranted && handleRequestPermission(perm.id)}
                   activeOpacity={0.8}>
                   <View style={[styles.permIcon, isGranted && styles.permIconGranted]}>
                     {isGranted ? <CheckCircle2 color={Colors.success} size={28} /> : perm.icon}
@@ -84,7 +121,7 @@ const PermissionsScreen: React.FC<Props> = ({navigation}) => {
                     <Text style={styles.permDesc}>{perm.description}</Text>
                     {!isGranted && (
                       <View style={styles.tapRow}>
-                        <Text style={styles.tapText}>Tap to simulate</Text>
+                        <Text style={styles.tapText}>Tap to enable</Text>
                         <ChevronRight color={Colors.primary} size={14} />
                       </View>
                     )}
