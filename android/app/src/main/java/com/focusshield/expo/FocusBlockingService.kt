@@ -96,15 +96,15 @@ class FocusBlockingService : Service() {
     private fun getForegroundPackage(): String? {
         val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val time = System.currentTimeMillis()
-        val events = usageStatsManager.queryEvents(time - 1000 * 60 * 5, time)
+        val events = usageStatsManager.queryEvents(time - 1000L * 60 * 5, time)
         val event = android.app.usage.UsageEvents.Event()
         var currentForegroundPackage: String? = null
         
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
-            if (event.eventType == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED) {
+            if (event.eventType == android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND) {
                 currentForegroundPackage = event.packageName
-            } else if (event.eventType == android.app.usage.UsageEvents.Event.ACTIVITY_PAUSED) {
+            } else if (event.eventType == android.app.usage.UsageEvents.Event.MOVE_TO_BACKGROUND) {
                 if (event.packageName == currentForegroundPackage) {
                     currentForegroundPackage = null
                 }
